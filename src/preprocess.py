@@ -74,7 +74,7 @@ def convert(mode='train'):
                             fw.write(f'{w["text"]}\tI-{label.upper()}\n')
                             fbw.write(f'{w["text"]}\t{bbox_string(w["box"], width, height)}\n')
                             fiw.write(f'{w["text"]}\t{actual_bbox_string(w["box"], width, height)}\t{file_name}\n')
-                        fw.write(f'{words[-1]["text"]}\tE-{label.upper()}\n')
+                        fw.write(f'{words[-1]["text"]}\tI-{label.upper()}\n')
                         fbw.write(f'{words[-1]["text"]}\t{bbox_string(words[-1]["box"], width, height)}\n')
                         fiw.write(
                             f'{words[-1]["text"]}\t{actual_bbox_string(words[-1]["box"], width, height)}\t{file_name}\n')

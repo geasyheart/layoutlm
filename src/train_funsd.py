@@ -13,15 +13,16 @@ from src.transform import FunsdDataSet, get_labels
 class FunsdLayoutLMTrainer(UTrainer):
 
     def train_steps(self, batch_idx, batch_data) -> Dict:
-        metric = LayoutLMMetric()
-        metric.step(self.evaluate_steps(batch_idx=batch_idx, batch_data=batch_data))
-        metric.score()
-        input_ids, token_type_ids, attention_mask, bbox, labels = batch_data
+        # metric = LayoutLMMetric()
+        # metric.step(self.evaluate_steps(batch_idx=batch_idx, batch_data=batch_data))
+        # metric.score()
+        input_ids, token_type_ids, attention_mask, bbox, imgs, labels = batch_data
         outputs = self.model(
             input_ids=input_ids,
             bbox=bbox,
             attention_mask=attention_mask,
             token_type_ids=token_type_ids,
+            image=imgs,
             labels=labels,
         )
         if isinstance(self.model, nn.DataParallel):
@@ -31,12 +32,13 @@ class FunsdLayoutLMTrainer(UTrainer):
         return {"loss": loss}
 
     def evaluate_steps(self, batch_idx, batch_data):
-        input_ids, token_type_ids, attention_mask, bbox, labels = batch_data
+        input_ids, token_type_ids, attention_mask, bbox, imgs, labels = batch_data
         outputs = self.model(
             input_ids=input_ids,
             bbox=bbox,
             attention_mask=attention_mask,
             token_type_ids=token_type_ids,
+            image=imgs,
             labels=labels,
         )
         y_preds, y_trues = outputs.logits.argmax(-1).tolist(), labels.tolist()
@@ -56,9 +58,9 @@ class FunsdLayoutLMTrainer(UTrainer):
 if __name__ == '__main__':
     trainer = FunsdLayoutLMTrainer()
 
-    trainer.model = nn.DataParallel(get_ptm_model(num_labels=len(get_labels())))
+    trainer.model = get_ptm_model(num_labels=len(get_labels()))
 
-    batch_size = 16
+    batch_size = 3
     train_dl = FunsdDataSet(mode='train', device=trainer.device).to_dl(batch_size=batch_size, shuffle=True)
     dev_dl = FunsdDataSet(mode='test', device=trainer.device).to_dl(batch_size=batch_size, shuffle=False)
 

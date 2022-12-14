@@ -4,6 +4,8 @@
 import os.path
 from typing import List
 
+import cv2
+import numpy as np
 import torch
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import Dataset, DataLoader
@@ -54,6 +56,7 @@ class InputFeatures(object):
         self.actual_bboxes = actual_bboxes
         self.file_name = file_name
         self.page_size = page_size
+        self.img_arr = None
 
 
 def get_labels():
@@ -72,26 +75,30 @@ class FunsdDataSet(Dataset):
         self.device = device
 
     def __getitem__(self, index) -> T_co:
-        return self.features[index]
+        example = self.features[index]
+        example.img_arr = torch.from_numpy(load_img(example.file_name))
+        return example
 
     def __len__(self):
         return len(self.features)
 
     def collate_fn(self, batch_data: List[InputFeatures]):
         input_ids, attention_masks, bbox, labels = [], [], [], []
+        img_arrs = []
         for ife in batch_data:
             input_ids.append(torch.tensor(ife.input_ids, dtype=torch.long))
             attention_masks.append(torch.tensor(ife.attention_mask, dtype=torch.bool))
             bbox.append(torch.tensor(ife.boxes, dtype=torch.long))
             labels.append(torch.tensor(ife.label_ids, dtype=torch.long))
-
+            img_arrs.append(ife.img_arr)
         pad_input_ids = pad_sequence(input_ids, padding_value=tokenizer.pad_token_id, batch_first=True)
         pad_token_type_ids = torch.zeros(pad_input_ids.shape, dtype=torch.long)
         pad_attention_mask = pad_sequence(attention_masks, padding_value=tokenizer.pad_token_id, batch_first=True)
         # pad bbox [0, 0, 0, 0]
         pad_bbox = pad_sequence(bbox, padding_value=tokenizer.pad_token_id, batch_first=True)
         pad_labels = pad_sequence(labels, padding_value=-100, batch_first=True)
-        return pad_input_ids.to(self.device), pad_token_type_ids.to(self.device), pad_attention_mask.to(self.device), pad_bbox.to(self.device), pad_labels.to(self.device)
+        return pad_input_ids.to(self.device), pad_token_type_ids.to(self.device), pad_attention_mask.to(
+            self.device), pad_bbox.to(self.device), torch.stack(img_arrs).to(self.device), pad_labels.to(self.device)
 
     def to_dl(self, batch_size, shuffle):
         return DataLoader(self, batch_size=batch_size, shuffle=shuffle, collate_fn=self.collate_fn)
@@ -143,6 +150,12 @@ def read_examples_from_file(data_dir, mode):
                 actual_bboxes.append(actual_bbox)
                 page_size = [int(i) for i in isplits[2].split()]
                 file_name = isplits[3].strip()
+                file_name = os.path.join(
+                    DATA_PATH, 'funsd-dataset', 'dataset',
+                    'training_data' if mode == 'train' else 'testing_data',
+                    'images',
+                    file_name
+                )
 
         if words:
             examples.append(
@@ -188,12 +201,12 @@ def convert_examples_to_features(
             label_ids = label_ids[: 510]
 
         tokens += [tokenizer.sep_token]
-        token_boxes += [[1000, 1000, 1000, 1000]]
+        token_boxes += [tokenizer.sep_token_box]
         actual_bboxes += [[0, 0, width, height]]
         label_ids += [pad_token_label_id]
 
         tokens = [tokenizer.cls_token] + tokens
-        token_boxes = [[0, 0, 0, 0]] + token_boxes
+        token_boxes = [tokenizer.cls_token_box] + token_boxes
         actual_bboxes = [[0, 0, width, height]] + actual_bboxes
         label_ids = [pad_token_label_id] + label_ids
 
@@ -211,6 +224,25 @@ def convert_examples_to_features(
             )
         )
     return features
+
+
+def load_img(img_path):
+    # https://huggingface.co/docs/transformers/main/en/model_doc/layoutlmv2#overview
+    # tips
+    img = cv2.imread(img_path)
+    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    resize_h, resize_w = 224, 224
+    im_shape = img.shape[0:2]
+    im_scale_y = resize_h / im_shape[0]
+    im_scale_x = resize_w / im_shape[1]
+    img_new = cv2.resize(img, None, None, fx=im_scale_x, fy=im_scale_y, interpolation=2)
+    mean = np.array([0.485, 0.456, 0.406])[np.newaxis, np.newaxis, :]
+    std = np.array([0.229, 0.224, 0.225])[np.newaxis, np.newaxis, :]
+    img_new = img_new / 255.0
+    img_new -= mean
+    img_new /= std
+    img = img_new.transpose((2, 0, 1))
+    return img.astype('float32')
 
 
 if __name__ == '__main__':

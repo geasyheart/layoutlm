@@ -13,9 +13,9 @@ from src.transform import FunsdDataSet, get_labels
 class FunsdLayoutLMTrainer(UTrainer):
 
     def train_steps(self, batch_idx, batch_data) -> Dict:
-        metric = LayoutLMMetric()
-        metric.step(self.evaluate_steps(batch_idx=batch_idx, batch_data=batch_data))
-        metric.score()
+        # metric = LayoutLMMetric()
+        # metric.step(self.evaluate_steps(batch_idx=batch_idx, batch_data=batch_data))
+        # metric.score()
         input_ids, token_type_ids, attention_mask, bbox, labels = batch_data
         outputs = self.model(
             input_ids=input_ids,
